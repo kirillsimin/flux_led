@@ -28,7 +28,11 @@ from .const import (
     MultiColorEffects,
 )
 from .timer import LedTimer
-from .utils import utils, white_levels_to_scaled_color_temp
+from .utils import (
+    scaled_color_temp_to_white_levels,
+    utils,
+    white_levels_to_scaled_color_temp,
+)
 
 
 class RemoteConfig(Enum):
@@ -415,6 +419,11 @@ class ProtocolBase:
     def __init__(self) -> None:
         self._counter = -1
         super().__init__()
+
+    @property
+    def speed_is_delay(self) -> bool:
+        """If True the speed is a delay."""
+        return True
 
     @property
     def requires_turn_on(self) -> bool:
@@ -1416,6 +1425,11 @@ class ProtocolLEDENET25Byte(ProtocolLEDENET9Byte):
     level_write_modes = LevelWriteModeData(ALL=0x00, COLORS=0xA1, WHITES=0xB1)
 
     @property
+    def speed_is_delay(self) -> bool:
+        """If True the speed is a delay."""
+        return False
+
+    @property
     def name(self) -> str:
         """The name of the protocol."""
         return PROTOCOL_LEDENET_25BYTE
@@ -1459,21 +1473,25 @@ class ProtocolLEDENET25Byte(ProtocolLEDENET9Byte):
         preset_pattern = raw_state[7]
         speed = raw_state[9]
 
-        hue = raw_state[10]
-        saturation = raw_state[11]
-        value = raw_state[12]
+        hue = raw_state[11]
+        saturation = raw_state[12]
+        value = raw_state[13]
 
-        cool_white = round((raw_state[14] / 100) * 255)
-        warm_white = round((raw_state[16] / 100) * 255)
+        white_temp = raw_state[14]
+        white_brightness = raw_state[15]
+        levels = scaled_color_temp_to_white_levels(white_temp, white_brightness)
+
+        cool_white = levels.cool_white
+        warm_white = levels.warm_white
 
         # Convert HSV to RGB
         h = (hue * 2) / 360
-        s = saturation / 255
-        v = value / 255
+        s = saturation / 100
+        v = value / 100
         r_f, g_f, b_f = colorsys.hsv_to_rgb(h, s, v)
-        red = min(int(r_f * 255), 255)
-        green = min(int(g_f * 255), 255)
-        blue = min(int(b_f * 255), 255)
+        red = min(int(max(0, r_f) * 255), 255)
+        green = min(int(max(0, g_f) * 255), 255)
+        blue = min(int(max(0, b_f) * 255), 255)
 
         # Fill standard state structure
         mode = 0
@@ -1584,6 +1602,11 @@ class ProtocolLEDENETAddressableBase(ProtocolLEDENET9Byte):
     def timer_len(self) -> int:
         """Return a single timer len."""
         return 14
+
+    @property
+    def speed_is_delay(self) -> bool:
+        """If True the speed is a delay."""
+        return False
 
 
 class ProtocolLEDENETAddressableA1(ProtocolLEDENETAddressableBase):
@@ -2472,6 +2495,11 @@ class ProtocolLEDENETCCTWrapped(ProtocolLEDENETCCT):
 
 
 class ProtocolLEDENETAddressableChristmas(ProtocolLEDENETAddressableBase):
+    @property
+    def speed_is_delay(self) -> bool:
+        """If True the speed is a delay in ms."""
+        return True
+
     def construct_state_query(self) -> bytearray:
         """The bytes to send for a query request."""
         return self.construct_wrapped_message(
