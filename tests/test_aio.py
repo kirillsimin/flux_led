@@ -3892,7 +3892,6 @@ def test_extended_state_to_state_full_cool_white():
     assert raw_state.cool_white == 255  # cool white
 
 
-@pytest.mark.asyncio
 def test_extended_state_too_short():
     proto = ProtocolLEDENET25Byte()
     assert proto.extended_state_to_state(b"\xea\x81") == b""
